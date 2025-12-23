@@ -7,6 +7,10 @@ const swaggerSpec = require("./config/swagger");
 
 const userRoutes = require("./routes/userRoutes");
 const authRoutes = require("./routes/authRoutes");
+const categoryRoutes = require("./routes/categoryRoutes");
+const documentRoutes = require("./routes/documentRoutes");
+const versionRoutes = require("./routes/versionRoutes");
+const auditRoutes = require("./routes/auditRoutes");
 
 const app = express();
 
@@ -21,6 +25,10 @@ app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 // API routes
 app.use("/api/users", userRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/categories", categoryRoutes);
+app.use("/api/documents", documentRoutes);
+app.use("/api", versionRoutes);
+app.use("/api/audit-logs", auditRoutes);
 
 // Default route
 app.get("/", (req, res) => {

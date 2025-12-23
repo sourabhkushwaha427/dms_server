@@ -1,0 +1,4 @@
+Role	View	Download	Upload Version	Change Status
+Public	✅ Published only	❌	  ❌	      ❌
+Staff	✅ Published	        ✅	  ✅	      ❌
+Admin	✅ All	            ✅ 	  ✅	      ✅

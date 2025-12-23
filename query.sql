@@ -124,3 +124,8 @@ ON CONFLICT DO NOTHING;
 ALTER TABLE users
 ADD COLUMN reset_token TEXT,
 ADD COLUMN reset_token_expiry TIMESTAMP;
+
+
+
+ALTER TABLE documents
+ADD COLUMN visibility VARCHAR(20) DEFAULT 'staff';
