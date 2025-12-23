@@ -58,7 +58,7 @@ const {
  *               items:
  *                 $ref: '#/components/schemas/Category'
  */
-router.get("/", authMiddleware, getCategories);
+router.get("/",  getCategories);
 
 /**
  * @swagger

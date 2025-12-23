@@ -1,3 +1,5 @@
+//src/routes/documentRoutes.js
+
 const express = require("express");
 const router = express.Router();
 
@@ -155,7 +157,7 @@ router.post("/", auth, createDocument);
  *                   items:
  *                     $ref: '#/components/schemas/Document'
  */
-router.get("/", auth, getDocuments);
+router.get("/",  getDocuments);
 
 /**
  * @swagger
@@ -183,7 +185,7 @@ router.get("/", auth, getDocuments);
  *       404:
  *         description: Document not found
  */
-router.get("/:id", auth, getDocumentById);
+router.get("/:id",  getDocumentById);
 
 /**
  * @swagger

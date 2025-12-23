@@ -2,7 +2,7 @@
 -- DMS FULL DATABASE SCRIPT (Friday Demo Ready)
 -- =============================================
 
--- 1. Setup Extensions (UUID generation ke liye)
+-- 1. Setup Extensions (UUID generation)
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- 2. Generic Function: Updated_at timestamp ko auto-handle karne ke liye
@@ -129,3 +129,7 @@ ADD COLUMN reset_token_expiry TIMESTAMP;
 
 ALTER TABLE documents
 ADD COLUMN visibility VARCHAR(20) DEFAULT 'staff';
+
+
+INSERT INTO categories (name) VALUES 
+('Director Secretariat'), ('Notice'), ('Annual Report'), ('RTI');

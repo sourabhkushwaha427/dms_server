@@ -125,26 +125,25 @@ router.get("/documents/:id/versions", auth, getVersions);
 /**
  * @swagger
  * /api/versions/{id}/download:
- *   get:
- *     summary: Download document version (Staff, Admin only)
- *     tags: [Versions]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         description: Version ID
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: File downloaded
- *       403:
- *         description: Download not allowed
- *       404:
- *         description: Version not found
+ * get:
+ * summary: Download document version (Public/Staff/Admin)
+ * tags: [Versions]
+ * parameters:
+ * - in: path
+ * name: id
+ * required: true
+ * description: Version ID
+ * schema:
+ * type: string
+ * responses:
+ * 200:
+ * description: File downloaded
+ * 403:
+ * description: Download not allowed for private documents
+ * 404:
+ * description: Version not found
  */
-router.get("/versions/:id/download", auth, downloadVersion);
+// Yahan 'auth' middleware hata diya gaya hai taaki API public ho jaye
+router.get("/versions/:id/download", downloadVersion);
 
 module.exports = router;

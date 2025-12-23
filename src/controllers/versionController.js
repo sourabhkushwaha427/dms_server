@@ -126,7 +126,7 @@ exports.getVersions = async (req, res) => {
 
 /**
  * DOWNLOAD document version
- * Allowed: Staff, Admin (Public NOT allowed)
+ * Publicly allowed ONLY if document is public & published
  */
 exports.downloadVersion = async (req, res) => {
   const { id } = req.params;
@@ -148,30 +148,37 @@ exports.downloadVersion = async (req, res) => {
     }
 
     const version = result.rows[0];
+    
+    // Role determine karein (Agar token nahi hai toh 'Public')
+    const userRole = req.user ? req.user.role : "Public";
 
-    // 🔐 DOWNLOAD PERMISSIONS
-    if (req.user.role === "Public") {
-      return res.status(403).json({ message: "Download not allowed" });
+    // 🔐 DOWNLOAD PERMISSIONS LOGIC
+    if (userRole === "Public") {
+      // Public user sirf wahi download kar sakta hai jo 'public' + 'published' ho
+      if (version.visibility !== "public" || version.status !== "published") {
+        return res.status(403).json({ message: "Download not allowed for private documents" });
+      }
+    } else if (userRole === "Staff") {
+      // Staff 'admin' visibility wali files download nahi kar sakta
+      if (version.visibility === "admin") {
+        return res.status(403).json({ message: "Download not allowed" });
+      }
     }
 
-    if (req.user.role === "Staff" && version.visibility === "admin") {
-      return res.status(403).json({ message: "Download not allowed" });
-    }
-
-    // ✅ AUDIT DOWNLOAD (WITH VERSION)
-    await logAudit({
-      user_id: req.user.id,
+    // ✅ AUDIT DOWNLOAD (Sirf logged-in users ke liye track karein)
+    if (req.user) {
+      await logAudit({
+      user_id: req.user ? req.user.id : null, // Login user hai toh ID, warna null
       document_id: version.document_id,
-      action: `DOWNLOAD (v${version.version_number})`,
+      action: `DOWNLOAD (v${version.version_number})${!req.user ? ' [PUBLIC]' : ''}`,
       req,
     });
+    }
 
+    // File download response
     res.download(version.file_path);
   } catch (error) {
-    console.error(error);
+    console.error("Download Error:", error);
     res.status(500).json({ message: "Failed to download file" });
   }
 };
-
-
-

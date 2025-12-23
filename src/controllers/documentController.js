@@ -1,11 +1,9 @@
-//src/controllers/documentController.js
-
 const pool = require("../config/db");
 const logAudit = require("../utils/auditLogger");
 
 /**
  * CREATE document
- * Admin / Staff only
+ * Staff / Admin only
  */
 exports.createDocument = async (req, res) => {
   const {
@@ -16,7 +14,10 @@ exports.createDocument = async (req, res) => {
     visibility = "staff",
   } = req.body;
 
-  if (req.user.role === "Public") {
+  // Role check with safety
+  const userRole = req.user ? req.user.role : "Public";
+
+  if (userRole === "Public") {
     return res.status(403).json({ message: "Not allowed to create document" });
   }
 
@@ -48,14 +49,14 @@ exports.createDocument = async (req, res) => {
 
     res.status(201).json(result.rows[0]);
   } catch (error) {
-    console.error(error);
+    console.error("Create Error:", error);
     res.status(500).json({ message: "Failed to create document" });
   }
 };
 
 /**
  * GET all documents
- * 🔎 Search + Filters + Pagination + Visibility
+ * 🔎 Search + Filters + Pagination + Visibility (Public Friendly)
  */
 exports.getDocuments = async (req, res) => {
   const {
@@ -68,55 +69,51 @@ exports.getDocuments = async (req, res) => {
   } = req.query;
 
   const offset = (page - 1) * limit;
-
   let conditions = [];
   let values = [];
   let idx = 1;
 
-  // 🔎 SEARCH (title)
+  const userRole = req.user ? req.user.role : "Public";
+
   if (search) {
     conditions.push(`d.title ILIKE $${idx++}`);
     values.push(`%${search}%`);
   }
 
-  // 🗂 CATEGORY
   if (category_id) {
     conditions.push(`d.category_id = $${idx++}`);
     values.push(category_id);
   }
 
-  // 📌 STATUS
-  if (status) {
+  if (status && userRole !== "Public") {
     conditions.push(`d.status = $${idx++}`);
     values.push(status);
   }
 
-  // 👁 VISIBILITY FILTER
-  if (visibility) {
+  if (visibility && userRole !== "Public") {
     conditions.push(`d.visibility = $${idx++}`);
     values.push(visibility);
   }
 
-  // 🔐 ROLE-BASED VISIBILITY
-  if (req.user.role === "Public") {
+  if (userRole === "Public") {
     conditions.push(`d.visibility = 'public'`);
     conditions.push(`d.status = 'published'`);
-  }
-
-  if (req.user.role === "Staff") {
-    conditions.push(`d.visibility IN ('public','staff')`);
+  } else if (userRole === "Staff") {
+    conditions.push(`d.visibility IN ('public', 'staff')`);
     conditions.push(`d.status = 'published'`);
   }
 
-  const whereClause =
-    conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
   try {
-    // 📄 DATA QUERY
+    // 📄 YAHAN BADLAV HAI: Subquery add ki gayi hai latest version_id lane ke liye
     const dataQuery = `
-      SELECT d.id, d.title, d.status, d.visibility, d.created_at,
+      SELECT d.id, d.title, d.description, d.status, d.visibility, d.created_at,
              c.name AS category,
-             u.email AS created_by
+             u.email AS created_by,
+             (SELECT v.id FROM document_versions v 
+              WHERE v.document_id = d.id 
+              ORDER BY v.version_number DESC LIMIT 1) AS version_id
       FROM documents d
       LEFT JOIN categories c ON d.category_id = c.id
       JOIN users u ON d.created_by = u.id
@@ -125,19 +122,11 @@ exports.getDocuments = async (req, res) => {
       LIMIT $${idx++} OFFSET $${idx++}
     `;
 
-    values.push(limit, offset);
+    const queryValues = [...values, limit, offset];
+    const data = await pool.query(dataQuery, queryValues);
 
-    const data = await pool.query(dataQuery, values);
-
-    // 📊 TOTAL COUNT
-    const countQuery = `
-      SELECT COUNT(*) FROM documents d ${whereClause}
-    `;
-
-    const total = await pool.query(
-      countQuery,
-      values.slice(0, values.length - 2)
-    );
+    const countQuery = `SELECT COUNT(*) FROM documents d ${whereClause}`;
+    const total = await pool.query(countQuery, values);
 
     res.json({
       page: Number(page),
@@ -146,16 +135,18 @@ exports.getDocuments = async (req, res) => {
       data: data.rows,
     });
   } catch (error) {
-    console.error(error);
+    console.error("Fetch Error:", error);
     res.status(500).json({ message: "Failed to fetch documents" });
   }
 };
 
+
 /**
- * GET single document
+ * GET single document by ID
  */
 exports.getDocumentById = async (req, res) => {
   const { id } = req.params;
+  const userRole = req.user ? req.user.role : "Public";
 
   try {
     const result = await pool.query(
@@ -175,28 +166,28 @@ exports.getDocumentById = async (req, res) => {
 
     const doc = result.rows[0];
 
-    // 🔐 VISIBILITY RULES
-    if (
-      req.user.role === "Public" &&
-      (doc.visibility !== "public" || doc.status !== "published")
-    ) {
+    // 🔐 ENFORCE VISIBILITY
+    if (userRole === "Public" && (doc.visibility !== "public" || doc.status !== "published")) {
       return res.status(403).json({ message: "Access denied" });
     }
 
-    if (req.user.role === "Staff" && doc.visibility === "admin") {
+    if (userRole === "Staff" && doc.visibility === "admin") {
       return res.status(403).json({ message: "Access denied" });
     }
 
-    await logAudit({
-      user_id: req.user.id,
-      document_id: id,
-      action: "VIEW DOCUMENT",
-      req,
-    });
+    // Only log audit if we have a user
+    if (req.user) {
+      await logAudit({
+        user_id: req.user.id,
+        document_id: id,
+        action: "VIEW DOCUMENT",
+        req,
+      });
+    }
 
     res.json(doc);
   } catch (error) {
-    console.error(error);
+    console.error("GetById Error:", error);
     res.status(500).json({ message: "Failed to fetch document" });
   }
 };
@@ -207,25 +198,20 @@ exports.getDocumentById = async (req, res) => {
 exports.updateDocumentStatus = async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
+  const userRole = req.user ? req.user.role : "Public";
 
-  if (req.user.role === "Public") {
-    return res.status(403).json({ message: "Not allowed" });
+  if (userRole === "Public") {
+    return res.status(403).json({ message: "Action forbidden for guest users" });
   }
 
   const allowedStatus = ["draft", "published", "archived"];
-
   if (!allowedStatus.includes(status)) {
     return res.status(400).json({ message: "Invalid status value" });
   }
 
   try {
     const result = await pool.query(
-      `
-      UPDATE documents
-      SET status = $1
-      WHERE id = $2
-      RETURNING *
-      `,
+      `UPDATE documents SET status = $1 WHERE id = $2 RETURNING *`,
       [status, id]
     );
 
@@ -235,7 +221,7 @@ exports.updateDocumentStatus = async (req, res) => {
 
     res.json(result.rows[0]);
   } catch (error) {
-    console.error(error);
+    console.error("Update Status Error:", error);
     res.status(500).json({ message: "Failed to update status" });
   }
 };
