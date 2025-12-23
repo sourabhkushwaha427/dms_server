@@ -11,6 +11,8 @@ const {
   getDocuments,
   getDocumentById,
   updateDocumentStatus,
+  deleteDocument,
+  updateDocument
 } = require("../controllers/documentController");
 
 /**
@@ -157,7 +159,8 @@ router.post("/", auth, createDocument);
  *                   items:
  *                     $ref: '#/components/schemas/Document'
  */
-router.get("/",  getDocuments);
+router.get("/", auth, getDocuments); 
+
 
 /**
  * @swagger
@@ -227,5 +230,10 @@ router.patch(
   role(["Admin", "Staff"]),
   updateDocumentStatus
 );
+
+
+router.delete("/:id", auth, role(["Admin"]), deleteDocument);
+
+router.put("/:id", auth, role(["Admin", "Staff"]), updateDocument);
 
 module.exports = router;

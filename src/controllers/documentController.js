@@ -75,38 +75,46 @@ exports.getDocuments = async (req, res) => {
 
   const userRole = req.user ? req.user.role : "Public";
 
+  // 1. SEARCH: Sabke liye common
   if (search) {
     conditions.push(`d.title ILIKE $${idx++}`);
     values.push(`%${search}%`);
   }
 
+  // 2. CATEGORY: Sabke liye common
   if (category_id) {
     conditions.push(`d.category_id = $${idx++}`);
     values.push(category_id);
   }
 
-  if (status && userRole !== "Public") {
-    conditions.push(`d.status = $${idx++}`);
-    values.push(status);
-  }
-
-  if (visibility && userRole !== "Public") {
-    conditions.push(`d.visibility = $${idx++}`);
-    values.push(visibility);
-  }
-
-  if (userRole === "Public") {
-    conditions.push(`d.visibility = 'public'`);
-    conditions.push(`d.status = 'published'`);
-  } else if (userRole === "Staff") {
+  // 3. 🔐 ROLE-BASED VISIBILITY RULES
+  if (userRole === "Admin") {
+    // ADMIN BYPASS: 
+    // Agar Admin ne specifically status ya visibility filter bheja hai tabhi filter lagao, 
+    // warna Admin ko bina filter ke sab dikhne do.
+    if (status) {
+      conditions.push(`d.status = $${idx++}`);
+      values.push(status);
+    }
+    if (visibility) {
+      conditions.push(`d.visibility = $${idx++}`);
+      values.push(visibility);
+    }
+  } 
+  else if (userRole === "Staff") {
+    // STAFF: Sirf published aur (Public ya Staff) visibility wali files
     conditions.push(`d.visibility IN ('public', 'staff')`);
+    conditions.push(`d.status = 'published'`);
+  } 
+  else {
+    // PUBLIC: Sirf 'public' visibility aur 'published' status
+    conditions.push(`d.visibility = 'public'`);
     conditions.push(`d.status = 'published'`);
   }
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
   try {
-    // 📄 YAHAN BADLAV HAI: Subquery add ki gayi hai latest version_id lane ke liye
     const dataQuery = `
       SELECT d.id, d.title, d.description, d.status, d.visibility, d.created_at,
              c.name AS category,
@@ -139,7 +147,6 @@ exports.getDocuments = async (req, res) => {
     res.status(500).json({ message: "Failed to fetch documents" });
   }
 };
-
 
 /**
  * GET single document by ID
@@ -223,5 +230,59 @@ exports.updateDocumentStatus = async (req, res) => {
   } catch (error) {
     console.error("Update Status Error:", error);
     res.status(500).json({ message: "Failed to update status" });
+  }
+};
+
+/**
+ * DELETE document
+ * Admin only
+ */
+exports.deleteDocument = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    // Note: Database Schema mein ON DELETE CASCADE laga hona chahiye 
+    // taaki document delete hote hi uske versions bhi delete ho jayein.
+    const result = await pool.query(
+      "DELETE FROM documents WHERE id = $1 RETURNING *",
+      [id]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: "Document not found" });
+    }
+
+    res.json({ message: "Document deleted successfully" });
+  } catch (error) {
+    console.error("Delete Error:", error);
+    res.status(500).json({ message: "Failed to delete document" });
+  }
+};
+
+
+/**
+ * UPDATE document details
+ * Admin/Staff only
+ */
+exports.updateDocument = async (req, res) => {
+  const { id } = req.params;
+  const { title, description, category_id, visibility } = req.body;
+
+  try {
+    const result = await pool.query(
+      `UPDATE documents 
+       SET title = $1, description = $2, category_id = $3, visibility = $4, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $5 RETURNING *`,
+      [title, description, category_id, visibility, id]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: "Document not found" });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error("Update Error:", error);
+    res.status(500).json({ message: "Failed to update document" });
   }
 };
