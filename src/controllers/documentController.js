@@ -73,25 +73,25 @@ exports.getDocuments = async (req, res) => {
   let values = [];
   let idx = 1;
 
+  // 🛡️ Sabse important change: req.user check karna
+  // Agar user login nahi hai (Global User), toh role automatically "Public" ho jayega
   const userRole = req.user ? req.user.role : "Public";
 
-  // 1. SEARCH: Sabke liye common
+  // 1. SEARCH (Common for all)
   if (search) {
     conditions.push(`d.title ILIKE $${idx++}`);
     values.push(`%${search}%`);
   }
 
-  // 2. CATEGORY: Sabke liye common
+  // 2. CATEGORY (Common for all)
   if (category_id) {
     conditions.push(`d.category_id = $${idx++}`);
     values.push(category_id);
   }
 
-  // 3. 🔐 ROLE-BASED VISIBILITY RULES
+  // 3. 🔐 ROLE-BASED VISIBILITY (Fix for Global Users)
   if (userRole === "Admin") {
-    // ADMIN BYPASS: 
-    // Agar Admin ne specifically status ya visibility filter bheja hai tabhi filter lagao, 
-    // warna Admin ko bina filter ke sab dikhne do.
+    // Admin bypass: filters tabhi lagenge jab Admin khud bheje
     if (status) {
       conditions.push(`d.status = $${idx++}`);
       values.push(status);
@@ -102,12 +102,12 @@ exports.getDocuments = async (req, res) => {
     }
   } 
   else if (userRole === "Staff") {
-    // STAFF: Sirf published aur (Public ya Staff) visibility wali files
+    // Staff: Sirf published aur staff-level visibility
     conditions.push(`d.visibility IN ('public', 'staff')`);
     conditions.push(`d.status = 'published'`);
   } 
   else {
-    // PUBLIC: Sirf 'public' visibility aur 'published' status
+    // 🌏 GLOBAL USER 
     conditions.push(`d.visibility = 'public'`);
     conditions.push(`d.status = 'published'`);
   }
@@ -115,6 +115,7 @@ exports.getDocuments = async (req, res) => {
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
   try {
+    // 📄 Subquery latest version_id lane ke liye
     const dataQuery = `
       SELECT d.id, d.title, d.description, d.status, d.visibility, d.created_at,
              c.name AS category,
