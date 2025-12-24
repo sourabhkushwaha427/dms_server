@@ -60,16 +60,24 @@ exports.me = async (req, res) => {
 
 
 exports.signup = async (req, res) => {
-  const { username, email, password } = req.body;
+  const { username, email, password, role } = req.body; // frontend se role aayega
 
   if (!username || !email || !password) {
     return res.status(400).json({ message: "All fields required" });
   }
 
   try {
+    // 1. Role determine karo (Admin add kar raha hai toh uska bheja hua, warna default 'Public')
+    const targetRole = role || 'Public';
+    
     const roleRes = await pool.query(
-      "SELECT id FROM roles WHERE role_name = 'Public'"
+      "SELECT id FROM roles WHERE role_name = $1", 
+      [targetRole]
     );
+
+    if (roleRes.rows.length === 0) {
+      return res.status(400).json({ message: "Invalid role" });
+    }
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
@@ -77,20 +85,19 @@ exports.signup = async (req, res) => {
       `
       INSERT INTO users (username, email, password_hash, role_id)
       VALUES ($1, $2, $3, $4)
-      RETURNING id, email
+      RETURNING id, username, email
       `,
       [username, email, hashedPassword, roleRes.rows[0].id]
     );
 
     res.status(201).json({
-      message: "Signup successful",
+      message: "User created successfully",
       user: userRes.rows[0],
     });
   } catch (err) {
     if (err.code === "23505") {
       return res.status(400).json({ message: "Email already exists" });
     }
-    console.error(err);
     res.status(500).json({ message: "Server error" });
   }
 };
