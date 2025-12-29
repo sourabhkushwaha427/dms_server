@@ -145,7 +145,6 @@ router.get("/documents/:id/versions", auth, getVersions);
  * 404:
  * description: Version not found
  */
-// Yahan 'auth' middleware hata diya gaya hai taaki API public ho jaye
 router.get("/versions/:id/download", auth, downloadVersion);
 
 module.exports = router;
