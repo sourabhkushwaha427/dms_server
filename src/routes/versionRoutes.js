@@ -1,3 +1,5 @@
+//src/routes/versionRoutes.js
+
 const express = require("express");
 const router = express.Router();
 
@@ -144,6 +146,6 @@ router.get("/documents/:id/versions", auth, getVersions);
  * description: Version not found
  */
 // Yahan 'auth' middleware hata diya gaya hai taaki API public ho jaye
-router.get("/versions/:id/download", downloadVersion);
+router.get("/versions/:id/download", auth, downloadVersion);
 
 module.exports = router;
