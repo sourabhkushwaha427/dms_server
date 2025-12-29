@@ -9,7 +9,7 @@ const logAudit = async ({ user_id, document_id, action, req }) => {
       VALUES ($1, $2, $3, $4, $5)
       `,
       [
-        user_id || null, // Agar user login nahi hai toh null jayega
+        user_id || null, 
         document_id,
         action,
         req.ip || req.connection.remoteAddress,
@@ -17,7 +17,6 @@ const logAudit = async ({ user_id, document_id, action, req }) => {
       ]
     );
   } catch (err) {
-    // Console pe error dikhayega par system crash nahi karega
     console.error("AUDIT LOG ERROR:", err.message);
   }
 };

@@ -14,8 +14,6 @@ const options = {
         url: "http://localhost:4002",
       },
     ],
-
-    // 🔐 ADD THIS PART (VERY IMPORTANT)
     components: {
       securitySchemes: {
         bearerAuth: {

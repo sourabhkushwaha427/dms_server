@@ -73,8 +73,6 @@ exports.getDocuments = async (req, res) => {
   let values = [];
   let idx = 1;
 
-  // 🛡️ Sabse important change: req.user check karna
-  // Agar user login nahi hai (Global User), toh role automatically "Public" ho jayega
   const userRole = req.user ? req.user.role : "Public";
 
   // 1. SEARCH (Common for all)
@@ -89,7 +87,7 @@ exports.getDocuments = async (req, res) => {
     values.push(category_id);
   }
 
-  // 3. 🔐 ROLE-BASED VISIBILITY (Fix for Global Users)
+  // 3. ROLE-BASED VISIBILITY (Fix for Global Users)
   if (userRole === "Admin") {
     // Admin bypass: filters tabhi lagenge jab Admin khud bheje
     if (status) {
@@ -107,7 +105,7 @@ exports.getDocuments = async (req, res) => {
     conditions.push(`d.status = 'published'`);
   } 
   else {
-    // 🌏 GLOBAL USER 
+    // GLOBAL USER 
     conditions.push(`d.visibility = 'public'`);
     conditions.push(`d.status = 'published'`);
   }
@@ -115,7 +113,7 @@ exports.getDocuments = async (req, res) => {
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
   try {
-    // 📄 Subquery latest version_id lane ke liye
+    // Subquery latest version_id lane ke liye
     const dataQuery = `
       SELECT d.id, d.title, d.description, d.status, d.visibility, d.created_at,
              c.name AS category,
@@ -174,7 +172,7 @@ exports.getDocumentById = async (req, res) => {
 
     const doc = result.rows[0];
 
-    // 🔐 ENFORCE VISIBILITY
+    // ENFORCE VISIBILITY
     if (userRole === "Public" && (doc.visibility !== "public" || doc.status !== "published")) {
       return res.status(403).json({ message: "Access denied" });
     }

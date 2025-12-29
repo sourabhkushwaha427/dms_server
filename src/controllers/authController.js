@@ -60,14 +60,13 @@ exports.me = async (req, res) => {
 
 
 exports.signup = async (req, res) => {
-  const { username, email, password, role } = req.body; // frontend se role aayega
+  const { username, email, password, role } = req.body; 
 
   if (!username || !email || !password) {
     return res.status(400).json({ message: "All fields required" });
   }
 
   try {
-    // 1. Role determine karo (Admin add kar raha hai toh uska bheja hua, warna default 'Public')
     const targetRole = role || 'Public';
     
     const roleRes = await pool.query(
@@ -109,7 +108,7 @@ exports.forgotPassword = async (req, res) => {
   const { email } = req.body;
 
   const token = crypto.randomBytes(32).toString("hex");
-  const expiry = new Date(Date.now() + 15 * 60 * 1000); // 15 min
+  const expiry = new Date(Date.now() + 15 * 60 * 1000); 
 
   await pool.query(
     `
@@ -120,10 +119,9 @@ exports.forgotPassword = async (req, res) => {
     [token, expiry, email]
   );
 
-  // 📩 Email integration later
   res.json({
     message: "Password reset link generated",
-    resetToken: token, // demo only
+    resetToken: token, 
   });
 };
 

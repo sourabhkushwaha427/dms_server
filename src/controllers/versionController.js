@@ -1,11 +1,9 @@
+//src/controllers/versionController.js
+
 const pool = require("../config/db");
 const path = require("path");
 const logAudit = require("../utils/auditLogger");
 
-/**
- * UPLOAD new document version
- * Allowed: Staff, Admin
- */
 exports.uploadVersion = async (req, res) => {
   const documentId = req.params.id;
 
@@ -18,7 +16,6 @@ exports.uploadVersion = async (req, res) => {
   }
 
   try {
-    // 🔍 Check document + visibility
     const docRes = await pool.query(
       `
       SELECT current_version_num, visibility
@@ -54,8 +51,6 @@ exports.uploadVersion = async (req, res) => {
         req.user.id,
       ]
     );
-
-    // ✅ AUDIT UPLOAD (WITH VERSION)
     await logAudit({
       user_id: req.user.id,
       document_id: documentId,
@@ -72,13 +67,11 @@ exports.uploadVersion = async (req, res) => {
 
 /**
  * LIST document versions
- * Allowed: Public (published), Staff, Admin
  */
 exports.getVersions = async (req, res) => {
   const { id } = req.params;
 
   try {
-    // 🔍 Check document visibility
     const docRes = await pool.query(
       `
       SELECT visibility, status
@@ -126,7 +119,6 @@ exports.getVersions = async (req, res) => {
 
 /**
  * DOWNLOAD document version
- * Publicly allowed ONLY if document is public & published
  */
 exports.downloadVersion = async (req, res) => {
   const { id } = req.params;
@@ -148,34 +140,25 @@ exports.downloadVersion = async (req, res) => {
     }
 
     const version = result.rows[0];
-    
-    // Role determine karein (Agar token nahi hai toh 'Public')
     const userRole = req.user ? req.user.role : "Public";
 
-    // 🔐 DOWNLOAD PERMISSIONS LOGIC
     if (userRole === "Public") {
-      // Public user sirf wahi download kar sakta hai jo 'public' + 'published' ho
       if (version.visibility !== "public" || version.status !== "published") {
         return res.status(403).json({ message: "Download not allowed for private documents" });
       }
     } else if (userRole === "Staff") {
-      // Staff 'admin' visibility wali files download nahi kar sakta
       if (version.visibility === "admin") {
         return res.status(403).json({ message: "Download not allowed" });
       }
     }
-
-    // AUDIT DOWNLOAD (Sirf logged-in users ke liye track karein)
     if (req.user) {
       await logAudit({
-      user_id: req.user ? req.user.id : null, // Login user hai toh ID, warna null
+      user_id: req.user ? req.user.id : null, 
       document_id: version.document_id,
       action: `DOWNLOAD (v${version.version_number})${!req.user ? ' [PUBLIC]' : ''}`,
       req,
     });
     }
-
-    // File download response
     res.download(version.file_path);
   } catch (error) {
     console.error("Download Error:", error);
