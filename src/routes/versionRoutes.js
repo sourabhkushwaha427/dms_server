@@ -93,58 +93,9 @@ router.post(
   uploadVersion
 );
 
-/**
- * @swagger
- * /api/documents/{id}/versions:
- *   get:
- *     summary: Get document versions (visibility based)
- *     tags: [Versions]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         description: Document ID
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Version list
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 $ref: '#/components/schemas/DocumentVersion'
- *       403:
- *         description: Access denied
- *       404:
- *         description: Document not found
- */
 router.get("/documents/:id/versions", auth, getVersions);
 
-/**
- * @swagger
- * /api/versions/{id}/download:
- * get:
- * summary: Download document version (Public/Staff/Admin)
- * tags: [Versions]
- * parameters:
- * - in: path
- * name: id
- * required: true
- * description: Version ID
- * schema:
- * type: string
- * responses:
- * 200:
- * description: File downloaded
- * 403:
- * description: Download not allowed for private documents
- * 404:
- * description: Version not found
- */
+
 router.get("/versions/:id/download", auth, downloadVersion);
 
 module.exports = router;

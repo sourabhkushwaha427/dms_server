@@ -124,9 +124,10 @@ exports.downloadVersion = async (req, res) => {
   const { id } = req.params;
 
   try {
+    // Note: Added 'v.file_type' to the query
     const result = await pool.query(
       `
-      SELECT v.file_path, v.document_id, v.version_number,
+      SELECT v.file_path, v.file_type, v.document_id, v.version_number,
              d.visibility, d.status
       FROM document_versions v
       JOIN documents d ON v.document_id = d.id
@@ -142,6 +143,7 @@ exports.downloadVersion = async (req, res) => {
     const version = result.rows[0];
     const userRole = req.user ? req.user.role : "Public";
 
+    // Permission Logic
     if (userRole === "Public") {
       if (version.visibility !== "public" || version.status !== "published") {
         return res.status(403).json({ message: "Download not allowed for private documents" });
@@ -151,15 +153,23 @@ exports.downloadVersion = async (req, res) => {
         return res.status(403).json({ message: "Download not allowed" });
       }
     }
+
+    // Audit Log
     if (req.user) {
       await logAudit({
-      user_id: req.user ? req.user.id : null, 
-      document_id: version.document_id,
-      action: `DOWNLOAD (v${version.version_number})${!req.user ? ' [PUBLIC]' : ''}`,
-      req,
-    });
+        user_id: req.user.id,
+        document_id: version.document_id,
+        action: `DOWNLOAD (v${version.version_number})`,
+        req,
+      });
     }
-    res.download(version.file_path);
+
+    // ✅ FIX: Send proper filename with extension
+    // Example: document_v1.png or document_v2.pdf
+    const downloadName = `document_v${version.version_number}${version.file_type}`;
+    
+    res.download(version.file_path, downloadName);
+
   } catch (error) {
     console.error("Download Error:", error);
     res.status(500).json({ message: "Failed to download file" });
