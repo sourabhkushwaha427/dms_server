@@ -124,7 +124,7 @@ exports.downloadVersion = async (req, res) => {
   const { id } = req.params;
 
   try {
-    // Note: Added 'v.file_type' to the query
+    // 1. Database se file details nikalo (file_type zaroori hai)
     const result = await pool.query(
       `
       SELECT v.file_path, v.file_type, v.document_id, v.version_number,
@@ -143,7 +143,7 @@ exports.downloadVersion = async (req, res) => {
     const version = result.rows[0];
     const userRole = req.user ? req.user.role : "Public";
 
-    // Permission Logic
+    // 2. Permission Logic Check Karo
     if (userRole === "Public") {
       if (version.visibility !== "public" || version.status !== "published") {
         return res.status(403).json({ message: "Download not allowed for private documents" });
@@ -154,7 +154,7 @@ exports.downloadVersion = async (req, res) => {
       }
     }
 
-    // Audit Log
+    // 3. Audit Log (Agar user logged in hai)
     if (req.user) {
       await logAudit({
         user_id: req.user.id,
@@ -164,14 +164,32 @@ exports.downloadVersion = async (req, res) => {
       });
     }
 
-    // ✅ FIX: Send proper filename with extension
-    // Example: document_v1.png or document_v2.pdf
+    // 4. ✅ FIX: Browser ko sahi Content-Type batana
+    // Isse browser file ko text samajhne ki galti nahi karega
+    const fileExtension = version.file_type ? version.file_type.toLowerCase() : '';
+    
+    let contentType = 'application/octet-stream'; // Default binary
+
+    if (fileExtension === '.pdf') contentType = 'application/pdf';
+    if (fileExtension === '.png') contentType = 'image/png';
+    if (fileExtension === '.jpg' || fileExtension === '.jpeg') contentType = 'image/jpeg';
+    if (fileExtension === '.doc') contentType = 'application/msword';
+    if (fileExtension === '.docx') contentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    if (fileExtension === '.xlsx') contentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+    // Header set karein
+    res.set('Content-Type', contentType);
+
+    // Filename banayein
     const downloadName = `document_v${version.version_number}${version.file_type}`;
     
+    // 5. Download Start
     res.download(version.file_path, downloadName);
 
   } catch (error) {
     console.error("Download Error:", error);
-    res.status(500).json({ message: "Failed to download file" });
+    if (!res.headersSent) {
+        res.status(500).json({ message: "Failed to download file" });
+    }
   }
 };
