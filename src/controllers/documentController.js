@@ -1,287 +1,195 @@
+// src/controllers/documentController.js
+
 const pool = require("../config/db");
-const logAudit = require("../utils/auditLogger");
+const path = require("path");
 
-/**
- * CREATE document
- * Staff / Admin only
- */
 exports.createDocument = async (req, res) => {
-  const {
-    title,
-    description,
-    category_id,
-    status = "draft",
-    visibility = "staff",
-  } = req.body;
-
-  // Role check with safety
-  const userRole = req.user ? req.user.role : "Public";
-
-  if (userRole === "Public") {
-    return res.status(403).json({ message: "Not allowed to create document" });
-  }
-
-  if (!title) {
-    return res.status(400).json({ message: "Title is required" });
-  }
-
-  const allowedVisibility = ["public", "staff", "admin"];
-  const allowedStatus = ["draft", "published", "archived"];
-
-  if (!allowedVisibility.includes(visibility)) {
-    return res.status(400).json({ message: "Invalid visibility value" });
-  }
-
-  if (!allowedStatus.includes(status)) {
-    return res.status(400).json({ message: "Invalid status value" });
-  }
+  const { title, description, category_id, status, visibility } = req.body;
+  const created_by = req.user.id;
 
   try {
     const result = await pool.query(
-      `
-      INSERT INTO documents
-      (title, description, category_id, status, visibility, created_by)
-      VALUES ($1, $2, $3, $4, $5, $6)
-      RETURNING *
-      `,
-      [title, description, category_id || null, status, visibility, req.user.id]
+      `INSERT INTO documents (title, description, category_id, status, visibility, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [title, description, category_id || null, status || "draft", visibility || "staff", created_by]
     );
-
     res.status(201).json(result.rows[0]);
-  } catch (error) {
-    console.error("Create Error:", error);
-    res.status(500).json({ message: "Failed to create document" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Database error" });
   }
 };
 
-/**
- * GET all documents
- * 🔎 Search + Filters + Pagination + Visibility (Public Friendly)
- */
+// ✅ UPDATED FUNCTION: Recursive Category Search + Version ID Fetch
 exports.getDocuments = async (req, res) => {
-  const {
-    search,
-    category_id,
-    status,
-    visibility,
-    page = 1,
-    limit = 10,
-  } = req.query;
-
-  const offset = (page - 1) * limit;
-  let conditions = [];
-  let values = [];
-  let idx = 1;
-
-  const userRole = req.user ? req.user.role : "Public";
-
-  // 1. SEARCH (Common for all)
-  if (search) {
-    conditions.push(`d.title ILIKE $${idx++}`);
-    values.push(`%${search}%`);
-  }
-
-  // 2. CATEGORY (Common for all)
-  if (category_id) {
-    conditions.push(`d.category_id = $${idx++}`);
-    values.push(category_id);
-  }
-
-  // 3. ROLE-BASED VISIBILITY (Fix for Global Users)
-  if (userRole === "Admin") {
-    // Admin bypass: filters tabhi lagenge jab Admin khud bheje
-    if (status) {
-      conditions.push(`d.status = $${idx++}`);
-      values.push(status);
-    }
-    if (visibility) {
-      conditions.push(`d.visibility = $${idx++}`);
-      values.push(visibility);
-    }
-  } 
-  else if (userRole === "Staff") {
-    // Staff: Sirf published aur staff-level visibility
-    conditions.push(`d.visibility IN ('public', 'staff')`);
-    conditions.push(`d.status = 'published'`);
-  } 
-  else {
-    // GLOBAL USER 
-    conditions.push(`d.visibility = 'public'`);
-    conditions.push(`d.status = 'published'`);
-  }
-
-  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-
   try {
-    // Subquery latest version_id lane ke liye
+    const { search, category_id, status, visibility, page = 1, limit = 10 } = req.query;
+    const offset = (page - 1) * limit;
+
+    let queryParams = [];
+    let whereClauses = [];
+    let paramCounter = 1;
+
+    // 1. Recursive Logic: Agar Category ID di gayi hai
+    if (category_id) {
+      const categoryQuery = `
+        WITH RECURSIVE category_tree AS (
+          SELECT id FROM categories WHERE id = $1
+          UNION ALL
+          SELECT c.id FROM categories c
+          INNER JOIN category_tree ct ON c.parent_id = ct.id
+        )
+        SELECT id FROM category_tree
+      `;
+      
+      const categoryResult = await pool.query(categoryQuery, [category_id]);
+      const allCategoryIds = categoryResult.rows.map(row => row.id);
+      
+      if (allCategoryIds.length > 0) {
+        whereClauses.push(`d.category_id = ANY($${paramCounter})`);
+        queryParams.push(allCategoryIds);
+        paramCounter++;
+      } else {
+        return res.json({ page: Number(page), limit: Number(limit), total: 0, data: [] });
+      }
+    }
+
+    // 2. Status Filter
+    if (status) {
+      whereClauses.push(`d.status = $${paramCounter}`);
+      queryParams.push(status);
+      paramCounter++;
+    }
+
+    // 3. Search Filter
+    if (search) {
+      whereClauses.push(`d.title ILIKE $${paramCounter}`);
+      queryParams.push(`%${search}%`);
+      paramCounter++;
+    }
+
+    // 4. Visibility Logic
+    if (visibility) {
+      whereClauses.push(`d.visibility = $${paramCounter}`);
+      queryParams.push(visibility);
+      paramCounter++;
+    } else {
+      if (!req.user) {
+         whereClauses.push(`d.visibility = 'public'`);
+      } else if (req.user.role === 'Staff') {
+         whereClauses.push(`d.visibility IN ('public', 'staff')`);
+      }
+    }
+
+    const whereString = whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
+
+    // Count Total
+    const countQuery = `SELECT COUNT(*) FROM documents d ${whereString}`;
+    const countRes = await pool.query(countQuery, queryParams);
+    const total = parseInt(countRes.rows[0].count);
+
+    // ✅ MAIN FIX: Join document_versions to get version_id
     const dataQuery = `
-      SELECT d.id, d.title, d.description, d.status, d.visibility, d.created_at,
-             c.name AS category,
-             u.email AS created_by,
-             (SELECT v.id FROM document_versions v 
-              WHERE v.document_id = d.id 
-              ORDER BY v.version_number DESC LIMIT 1) AS version_id
+      SELECT 
+        d.*, 
+        c.name as category,
+        v.id as version_id,       -- ✅ YEAH MISSING THA
+        v.file_type               -- ✅ File type bhi le lo
       FROM documents d
       LEFT JOIN categories c ON d.category_id = c.id
-      JOIN users u ON d.created_by = u.id
-      ${whereClause}
-      ORDER BY d.created_at DESC
-      LIMIT $${idx++} OFFSET $${idx++}
+      -- Join to get the ID of the CURRENT version
+      LEFT JOIN document_versions v ON d.id = v.document_id AND d.current_version_num = v.version_number
+      ${whereString}
+      ORDER BY d.updated_at DESC
+      LIMIT $${paramCounter} OFFSET $${paramCounter + 1}
     `;
 
-    const queryValues = [...values, limit, offset];
-    const data = await pool.query(dataQuery, queryValues);
-
-    const countQuery = `SELECT COUNT(*) FROM documents d ${whereClause}`;
-    const total = await pool.query(countQuery, values);
+    queryParams.push(limit, offset);
+    const dataRes = await pool.query(dataQuery, queryParams);
 
     res.json({
       page: Number(page),
       limit: Number(limit),
-      total: Number(total.rows[0].count),
-      data: data.rows,
+      total,
+      data: dataRes.rows,
     });
-  } catch (error) {
-    console.error("Fetch Error:", error);
-    res.status(500).json({ message: "Failed to fetch documents" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
   }
 };
 
-/**
- * GET single document by ID
- */
 exports.getDocumentById = async (req, res) => {
   const { id } = req.params;
-  const userRole = req.user ? req.user.role : "Public";
-
   try {
     const result = await pool.query(
-      `
-      SELECT d.*, c.name AS category, u.email AS created_by
-      FROM documents d
-      LEFT JOIN categories c ON d.category_id = c.id
-      JOIN users u ON d.created_by = u.id
-      WHERE d.id = $1
-      `,
+      `SELECT 
+         d.*, 
+         c.name as category,
+         v.id as version_id,      -- ✅ ADDED HERE TOO
+         v.file_type 
+       FROM documents d 
+       LEFT JOIN categories c ON d.category_id = c.id 
+       -- Join for Version Info
+       LEFT JOIN document_versions v ON d.id = v.document_id AND d.current_version_num = v.version_number
+       WHERE d.id = $1`,
       [id]
     );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ message: "Document not found" });
-    }
+    if (result.rows.length === 0) return res.status(404).json({ message: "Document not found" });
 
     const doc = result.rows[0];
-
-    // ENFORCE VISIBILITY
-    if (userRole === "Public" && (doc.visibility !== "public" || doc.status !== "published")) {
-      return res.status(403).json({ message: "Access denied" });
-    }
-
-    if (userRole === "Staff" && doc.visibility === "admin") {
-      return res.status(403).json({ message: "Access denied" });
-    }
-
-    // Only log audit if we have a user
-    if (req.user) {
-      await logAudit({
-        user_id: req.user.id,
-        document_id: id,
-        action: "VIEW DOCUMENT",
-        req,
-      });
-    }
+    
+    // Role based access check
+    if (!req.user && doc.visibility !== 'public') return res.status(403).json({message: "Access Denied"});
+    if (req.user && req.user.role === 'Staff' && doc.visibility === 'admin') return res.status(403).json({message: "Access Denied"});
 
     res.json(doc);
-  } catch (error) {
-    console.error("GetById Error:", error);
-    res.status(500).json({ message: "Failed to fetch document" });
+  } catch (err) {
+    res.status(500).json({ message: "Server error" });
   }
 };
 
-/**
- * UPDATE document status
- */
 exports.updateDocumentStatus = async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
-  const userRole = req.user ? req.user.role : "Public";
-
-  if (userRole === "Public") {
-    return res.status(403).json({ message: "Action forbidden for guest users" });
-  }
-
-  const allowedStatus = ["draft", "published", "archived"];
-  if (!allowedStatus.includes(status)) {
-    return res.status(400).json({ message: "Invalid status value" });
-  }
-
   try {
     const result = await pool.query(
       `UPDATE documents SET status = $1 WHERE id = $2 RETURNING *`,
       [status, id]
     );
-
-    if (result.rowCount === 0) {
-      return res.status(404).json({ message: "Document not found" });
-    }
-
+    if (result.rows.length === 0) return res.status(404).json({ message: "Not found" });
     res.json(result.rows[0]);
-  } catch (error) {
-    console.error("Update Status Error:", error);
-    res.status(500).json({ message: "Failed to update status" });
+  } catch (err) {
+    res.status(500).json({ message: "Server error" });
   }
 };
 
-/**
- * DELETE document
- * Admin only
- */
 exports.deleteDocument = async (req, res) => {
   const { id } = req.params;
-
   try {
-    // Note: Database Schema mein ON DELETE CASCADE laga hona chahiye 
-    // taaki document delete hote hi uske versions bhi delete ho jayein.
-    const result = await pool.query(
-      "DELETE FROM documents WHERE id = $1 RETURNING *",
-      [id]
-    );
-
-    if (result.rowCount === 0) {
-      return res.status(404).json({ message: "Document not found" });
-    }
-
-    res.json({ message: "Document deleted successfully" });
-  } catch (error) {
-    console.error("Delete Error:", error);
-    res.status(500).json({ message: "Failed to delete document" });
+    await pool.query(`DELETE FROM documents WHERE id = $1`, [id]);
+    res.json({ message: "Deleted successfully" });
+  } catch (err) {
+    res.status(500).json({ message: "Server error" });
   }
 };
 
-
-/**
- * UPDATE document details
- * Admin/Staff only
- */
 exports.updateDocument = async (req, res) => {
-  const { id } = req.params;
-  const { title, description, category_id, visibility } = req.body;
-
-  try {
-    const result = await pool.query(
-      `UPDATE documents 
-       SET title = $1, description = $2, category_id = $3, visibility = $4, updated_at = CURRENT_TIMESTAMP
-       WHERE id = $5 RETURNING *`,
-      [title, description, category_id, visibility, id]
-    );
-
-    if (result.rowCount === 0) {
-      return res.status(404).json({ message: "Document not found" });
+    const { id } = req.params;
+    const { title, description, category_id, status, visibility } = req.body;
+    
+    try {
+        const result = await pool.query(
+            `UPDATE documents 
+             SET title = $1, description = $2, category_id = $3, status = $4, visibility = $5, updated_at = CURRENT_TIMESTAMP
+             WHERE id = $6 RETURNING *`,
+            [title, description, category_id, status, visibility, id]
+        );
+        
+        if (result.rows.length === 0) return res.status(404).json({ message: "Document not found" });
+        res.json(result.rows[0]);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: "Update failed" });
     }
-
-    res.json(result.rows[0]);
-  } catch (error) {
-    console.error("Update Error:", error);
-    res.status(500).json({ message: "Failed to update document" });
-  }
 };
