@@ -5,15 +5,21 @@ const router = express.Router();
 
 const auth = require("../middlewares/authMiddleware");
 const role = require("../middlewares/roleMiddleware");
-
+const multer = require('multer');
+const upload = multer({ dest: 'uploads/' });
 const {
   createDocument,
   getDocuments,
   getDocumentById,
   updateDocumentStatus,
   deleteDocument,
-  updateDocument
+  updateDocument,
+  updateDocumentContent,
+  downloadDocumentContent,
+  importDocument
 } = require("../controllers/documentController");
+
+router.get("/:id/download-content", downloadDocumentContent);
 
 /**
  * @swagger
@@ -188,7 +194,8 @@ router.get("/", auth, getDocuments);
  *       404:
  *         description: Document not found
  */
-router.get("/:id",  getDocumentById);
+// ✅ Isme 'auth' middleware add karein
+router.get("/:id", auth, getDocumentById);
 
 /**
  * @swagger
@@ -230,6 +237,18 @@ router.patch(
   role(["Admin", "Staff"]),
   updateDocumentStatus
 );
+
+
+router.post(
+  "/import", 
+  auth, 
+  role(["Admin", "Staff"]), 
+  upload.single("file"), 
+  importDocument
+);
+
+//  NEW ROUTE: Content Save karne ke liye
+router.put("/:id/content", auth, role(["Admin", "Staff"]), updateDocumentContent);
 
 
 router.delete("/:id", auth, role(["Admin"]), deleteDocument);

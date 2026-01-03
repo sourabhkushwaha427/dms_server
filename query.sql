@@ -133,3 +133,20 @@ ADD COLUMN visibility VARCHAR(20) DEFAULT 'staff';
 
 INSERT INTO categories (name) VALUES 
 ('Director Secretariat'), ('Notice'), ('Annual Report'), ('RTI');
+
+
+
+
+
+
+
+
+
+-- 1. Document ka source batane ke liye (Upload kiya hai ya Live banaya hai)
+ALTER TABLE documents 
+ADD COLUMN doc_source_type VARCHAR(20) DEFAULT 'file'; 
+-- Values ho sakti hain: 'file', 'sheet', 'rich_text'
+
+-- 2. Live content (Excel ka data ya Word ka text) save karne ke liye
+ALTER TABLE documents 
+ADD COLUMN content_data JSONB DEFAULT NULL;
