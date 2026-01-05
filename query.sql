@@ -150,3 +150,33 @@ ADD COLUMN doc_source_type VARCHAR(20) DEFAULT 'file';
 -- 2. Live content (Excel ka data ya Word ka text) save karne ke liye
 ALTER TABLE documents 
 ADD COLUMN content_data JSONB DEFAULT NULL;
+
+
+
+
+
+
+
+
+
+
+
+-- 1. Document Versions Table Fix
+ALTER TABLE document_versions
+DROP CONSTRAINT IF EXISTS document_versions_document_id_fkey;
+
+ALTER TABLE document_versions
+ADD CONSTRAINT document_versions_document_id_fkey
+FOREIGN KEY (document_id)
+REFERENCES documents(id)
+ON DELETE CASCADE;  -- <-- YE ZAROORI HAI
+
+-- 2. Audit Logs Table Fix
+ALTER TABLE audit_logs
+DROP CONSTRAINT IF EXISTS audit_logs_document_id_fkey;
+
+ALTER TABLE audit_logs
+ADD CONSTRAINT audit_logs_document_id_fkey
+FOREIGN KEY (document_id)
+REFERENCES documents(id)
+ON DELETE SET NULL; -- Delete hone par log me NULL ho jaye, par error na de

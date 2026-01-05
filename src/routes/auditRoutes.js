@@ -61,6 +61,6 @@ const { getAuditLogs } = require("../controllers/auditController");
  *       401:
  *         description: Unauthorized
  */
-router.get("/", auth, role(["Admin"]), getAuditLogs);
+router.get("/", auth, role(["Admin", "Staff"]), getAuditLogs);
 
 module.exports = router;
