@@ -11,6 +11,7 @@ const categoryRoutes = require("./routes/categoryRoutes");
 const documentRoutes = require("./routes/documentRoutes");
 const versionRoutes = require("./routes/versionRoutes");
 const auditRoutes = require("./routes/auditRoutes");
+const pageRoutes = require("./routes/pageRoutes");
 
 const app = express();
 
@@ -33,6 +34,7 @@ app.use("/api/categories", categoryRoutes);
 app.use("/api/documents", documentRoutes);
 app.use("/api", versionRoutes);
 app.use("/api/audit-logs", auditRoutes);
+app.use("/api/pages", pageRoutes);
 
 // Default route
 app.get("/", (req, res) => {

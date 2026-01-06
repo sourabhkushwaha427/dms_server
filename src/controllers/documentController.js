@@ -177,14 +177,12 @@ exports.deleteDocument = async (req, res) => {
 
     // 2. Check if anything was actually deleted
     if (result.rowCount === 0) {
-        // Agar rowCount 0 hai, iska matlab delete nahi hua
         return res.status(404).json({ message: "Document not found or could not be deleted." });
     }
 
     res.json({ message: "Deleted successfully" });
   } catch (err) {
     console.error("Delete Error:", err);
-    // Agar Foreign Key constraint ka error aaya
     if (err.code === '23503') { 
         return res.status(400).json({ message: "Cannot delete: This document is linked to other records." });
     }

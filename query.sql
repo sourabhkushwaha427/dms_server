@@ -180,3 +180,14 @@ ADD CONSTRAINT audit_logs_document_id_fkey
 FOREIGN KEY (document_id)
 REFERENCES documents(id)
 ON DELETE SET NULL; -- Delete hone par log me NULL ho jaye, par error na de
+
+
+
+
+CREATE TABLE pages (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    title VARCHAR(255) NOT NULL,
+    slug VARCHAR(255) UNIQUE NOT NULL, -- URL ke liye (e.g. "offers")
+    content JSONB, -- 🔥 Pura Craft.js ka data yahan jayega
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
